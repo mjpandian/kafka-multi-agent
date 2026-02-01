@@ -1,0 +1,95 @@
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  producer-agent:
+    build: .
+    container_name: producer-agent
+    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - OLLAMA_URL=http://host.docker.internal:11434/v1
+      - PYTHONUNBUFFERED=1      
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python producer_agent.py
+
+  consumer-agent:
+    build: .
+    # container_name REMOVED to allow scaling (docker compose up --scale consumer-agent=3)
+    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - OLLAMA_URL=http://host.docker.internal:11434/v1
+      - PYTHONUNBUFFERED=1      
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python consumer_agent.py
+
+  reviewer-agent:
+    build: .
+    container_name: reviewer-agent
+    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - OLLAMA_URL=http://host.docker.internal:11434/v1
+      - PYTHONUNBUFFERED=1        
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python reviewer_agent.py
+
+  persistence-agent:
+    build: .
+    container_name: persistence-agent
+    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - PYTHONUNBUFFERED=1
+    command: python persistence_agent.py
+
+  dashboard:
+    build: .
+    container_name: dashboard
+    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - PYTHONUNBUFFERED=1        
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python dashboard_agent.py
