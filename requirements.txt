@@ -1,0 +1,6 @@
+kafka-python-ng
+openai
+flask
+python-dotenv
+ollama
+qdrant-client

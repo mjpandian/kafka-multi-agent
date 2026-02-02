@@ -15,9 +15,10 @@ services:
       - "9092:9092"
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   producer-agent:
     build: .
@@ -30,6 +31,8 @@ services:
       - KAFKA_BROKER=kafka:9092
       - OLLAMA_URL=http://host.docker.internal:11434/v1
       - PYTHONUNBUFFERED=1      
+    volumes:
+      - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python producer_agent.py
@@ -45,6 +48,8 @@ services:
       - KAFKA_BROKER=kafka:9092
       - OLLAMA_URL=http://host.docker.internal:11434/v1
       - PYTHONUNBUFFERED=1      
+    volumes:
+      - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python consumer_agent.py
@@ -60,9 +65,40 @@ services:
       - KAFKA_BROKER=kafka:9092
       - OLLAMA_URL=http://host.docker.internal:11434/v1
       - PYTHONUNBUFFERED=1        
+    volumes:
+      - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python reviewer_agent.py
+
+  sandbox-agent:
+    build: .
+    container_name: sandbox-agent
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_URL=http://host.docker.internal:11434/v1
+      - QDRANT_HOST=qdrant
+    volumes:
+      - .:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python sandbox_agent.py
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: always
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
 
   persistence-agent:
     build: .
@@ -76,7 +112,7 @@ services:
     environment:
       - KAFKA_BROKER=kafka:9092
       - PYTHONUNBUFFERED=1
-    command: python persistence_agent.py
+    command: python persistent_agent.py
 
   dashboard:
     build: .
@@ -87,9 +123,24 @@ services:
         condition: service_healthy
     ports:
       - "5000:5000"
+    volumes:
+      - .:/app
     environment:
       - KAFKA_BROKER=kafka:9092
       - PYTHONUNBUFFERED=1        
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python dashboard_agent.py
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - DYNAMIC_CONFIG_ENABLED=true
+    depends_on:
+      kafka:
+        condition: service_healthy

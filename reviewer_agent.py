@@ -6,6 +6,8 @@ KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 IN_TOPIC = "ai_solutions"
 OUT_TOPIC = "ai_reviews"
 OLLAMA_URL = os.getenv("OLLAMA_URL")
+from utils.telemetry_utils import TelemetryLogger
+telemetry = TelemetryLogger("reviewer")
 
 def initialize_kafka():
     while True:
@@ -24,20 +26,20 @@ def initialize_kafka():
             )
             return consumer, producer
         except Exception as e:
-            print(f"⌛ Reviewer waiting for Kafka... {e}", flush=True)
+            telemetry.log(f"⌛ Reviewer waiting for Kafka... {e}")
             time.sleep(5)
 
 client = OpenAI(base_url=OLLAMA_URL, api_key="ollama")
 
 if __name__ == "__main__":
     consumer, producer = initialize_kafka()
-    print("🕵️ Reviewer Agent is active. Standing by for code submissions...", flush=True)
+    telemetry.log("🕵️ Reviewer Agent is active.")
     
     for message in consumer:
         solution_data = message.value
         code = solution_data.get('solution', '')
         
-        print(f"🧐 Reviewing code for task: {solution_data['task'][:50]}...", flush=True)
+        telemetry.log(f"🧐 Reviewing code for: {solution_data['task'][:30]}...")
         
         resp = client.chat.completions.create(
             model="gemma3:1b",
@@ -50,4 +52,4 @@ if __name__ == "__main__":
             'solution': code,
             'review': review
         })
-        print(f"✅ Review completed and sent to {OUT_TOPIC}", flush=True)
+        telemetry.log(f"✅ Review completed and sent to {OUT_TOPIC}")

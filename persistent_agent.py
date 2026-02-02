@@ -3,6 +3,8 @@ from kafka import KafkaConsumer
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 CSV_FILE = "/app/data/ai_history.csv"
+from utils.telemetry_utils import TelemetryLogger
+telemetry = TelemetryLogger("persistence")
 
 def initialize_persistence():
     while True:
@@ -16,12 +18,12 @@ def initialize_persistence():
                 value_deserializer=lambda x: json.loads(x.decode('utf-8'))
             )
         except Exception as e:
-            print(f"⌛ Persistence waiting for Kafka... {e}", flush=True)
+            telemetry.log(f"⌛ Persistence waiting for Kafka... {e}")
             time.sleep(5)
 
 if __name__ == "__main__":
     consumer = initialize_persistence()
-    print("💾 Persistence Agent active. Archiving to CSV...", flush=True)
+    telemetry.log("💾 Persistence Agent active. Archiving to CSV...")
 
     # Ensure directory exists
     os.makedirs("/app/data", exist_ok=True)
@@ -36,4 +38,4 @@ if __name__ == "__main__":
                 writer.writeheader()
             writer.writerow(data)
         
-        print(f"📁 Archived task: {data['task'][:30]}...", flush=True)
+        telemetry.log(f"📁 Archived task: {data['task'][:30]}...")

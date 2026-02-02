@@ -1,15 +1,4 @@
-# Python-generated files
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-___pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -36,7 +25,12 @@ mem0_*/
 .gitignore
 .vscode/
 .idea/
- 
- 
+README.md
+ARCHITECTURE.md
+implementation_plan.md
+task.md
+walkthrough.md
+Dockerfile
+docker-compose.yaml
 qdrant_data/
 qdrant_data/*

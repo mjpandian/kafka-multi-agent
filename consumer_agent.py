@@ -5,25 +5,25 @@ from openai import OpenAI
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 OLLAMA_URL = os.getenv("OLLAMA_URL")
 
+from utils.telemetry_utils import TelemetryLogger
+telemetry = TelemetryLogger("consumer")
+
 # --- KAFKA CONNECTION HELPERS ---
 
 def connect_consumer():
     while True:
         try:
-            print(f"📡 Connecting Consumer to {KAFKA_BROKER}...", flush=True)
+            telemetry.log(f"📡 Connecting Consumer to {KAFKA_BROKER}...")
             return KafkaConsumer(
                 'ai_topic',
                 bootstrap_servers=KAFKA_BROKER,
                 api_version=(3, 5, 0),
-                group_id='agent-b-group',
+                group_id='consumer-group',
                 auto_offset_reset='earliest',
-                value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-                enable_auto_commit=True,
-                auto_commit_interval_ms=1000,
-                request_timeout_ms=30000
+                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
             )
         except Exception as e:
-            print(f"⌛ Consumer waiting for Kafka... ({e})", flush=True)
+            telemetry.log(f"⌛ Consumer waiting for Kafka... ({e})")
             time.sleep(5)
 
 def connect_producer():
@@ -46,21 +46,21 @@ client = OpenAI(base_url=OLLAMA_URL, api_key="ollama")
 if __name__ == "__main__":
     consumer = connect_consumer()
     producer = connect_producer()
-    print("👂 Agent B (Consumer) is officially listening...", flush=True)
+    telemetry.log("👂 Consumer Agent is active.")
     
     for message in consumer:
         task = message.value.get('task', 'No task found')
-        print(f"📥 Received Task: {task}", flush=True)
+        telemetry.log(f"📥 Received Task: {task[:30]}...")
         
         try:
-            # 1. Get Solution from Ollama
+            # 1. Get Solution from Ollama (The Optimized Coder)
             resp = client.chat.completions.create(
                 model="gemma3:1b",
-                messages=[{"role": "user", "content": f"Solve this coding task: {task}"}]
+                messages=[{"role": "user", "content": f"You are a Senior Software Engineer. Solve this LeetCode problem with an optimized Python implementation. Analyze the constraints and use efficient data structures. ONLY output the code block and a short complexity analysis: {task}"}]
             )
             
             solution_content = resp.choices[0].message.content
-            print(f"✅ Solution Generated", flush=True)
+            telemetry.log(f"✅ Solution Generated")
 
             # 2. Publish to 'ai_solutions' for the Reviewer
             producer.send('ai_solutions', {
@@ -68,7 +68,7 @@ if __name__ == "__main__":
                 'solution': solution_content
             })
             producer.flush() # Ensure it's sent before next iteration
-            print(f"📤 Sent to ai_solutions topic", flush=True)
+            telemetry.log(f"📤 Sent to ai_solutions topic")
 
         except Exception as e:
-            print(f"❌ Error processing task: {e}", flush=True)
+            telemetry.log(f"❌ Error processing task: {e}")
