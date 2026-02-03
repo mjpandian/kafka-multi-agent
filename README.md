@@ -78,3 +78,26 @@ To verify the **Adaptive Throttling** (Governor) logic:
 4. Once the Consumers clear the backlog, the system will automatically return to **GREEN/ACTIVE**.
 
  
+## 🐳 Docker Operations Cheat Sheet
+
+Use these commands to manage the AI-Mesh ecosystem from the root directory.
+
+### 🚀 Lifecycle Management
+- **Start Mesh (Standard)**: `docker-compose up --build`
+- **Start Mesh (Detached)**: `docker-compose up --build -d`
+- **Stop Mesh**: `docker-compose stop`
+- **Shut Down & Clean (Recommended)**: `docker-compose down`
+- **Wipe All (Images/Volumes)**: `docker-compose down --rmi all --volumes`
+
+### 📈 Scaling & Management
+- **Scale Consumers**: `docker-compose up -d --scale consumer-agent=3`
+- **Check Process Status**: `docker-compose ps`
+- **Rebuild Single Agent**: `docker-compose build producer-agent && docker-compose up -d producer-agent`
+
+### 📜 Observability & Logs
+- **Follow All Logs**: `docker-compose logs -f`
+- **Follow Specific Agent**: `docker-compose logs -f sandbox-agent`
+- **Check Dashboard**: Open `http://localhost:5000` in your browser.
+- **Check Kafka UI**: Open `http://localhost:8080` in your browser.
+
+---
