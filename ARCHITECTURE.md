@@ -1,6 +1,6 @@
 # 🏗️ AI-Mesh: Architecture & Design
 
-This document details the enhanced architecture of the AI-Mesh system, focusing on the integration of **Persistent Memory** (`mem0`) and **Self-Learning Loops** (`agent-lightning`).
+This document details the architecture of the AI-Mesh system, focusing on the integration of **Qdrant-based Memory** and **Event-Driven Telemetry**.
 
 ## 🛰️ System Overview
 
@@ -11,29 +11,25 @@ The system transitions from a simple pipeline to a **Closed-Loop Learning Ecosys
 ### 🗺️ Data Flow Map
 
 - **[Producer]** --(task)--> **[Kafka: ai_topic]** --(task)--> **[Consumer]**
-- **[Consumer]** --(code)--> **[Kafka: ai_solutions]** --(code)--> **[Sandbox]**
-- **[Sandbox]** --(result)--> **[Kafka: ai_verified_solutions]** --(result)--> **[Reviewer]**
-- **[Reviewer]** --(reward/critique)--> **[Kafka: ai_reviews]**
-- **[Supervisor]** --(Audit/Report)--> **[Telemetry]**
-- **[Memory (mem0)]** <--> (Knowledge Sync) <--> **[All Agents]**
-- **[Learning Optimizer]** --(Self-Correction)--> **[Prompts/Skills]**
-- **[Telemetry]** --(Metrics)--> **[Dashboard]**
+- **[Consumer]** --(code)--> **[Kafka: ai_solutions]** --(code)--> **[Sandbox]** & **[Reviewer]**
+- **[Sandbox]** --(result)--> **[Kafka: ai_verified_solutions]** --(result)--> **[Dashboard]**
+- **[Reviewer]** --(critique)--> **[Kafka: ai_reviews]** --(critique)--> **[Dashboard]** & **[Persistence]**
+- **[All Agents]** --(telemetry/logs)--> **[Kafka: ai_telemetry]** --(logs)--> **[Dashboard]**
+- **[Memory (Qdrant)]** <--> (Experience Store) <--> **[Sandbox/Agents]**
+- **[Persistence]** --(Archive)--> **[CSV Storage]**
 
 ## 🧠 Key Components
 
-### 1. Persistent Memory (`mem0`)
-- **Purpose**: To provide long-term "experience" to the agents.
+### 1. Qdrant-Based Memory (`MemorySkill`)
+- **Purpose**: To provide persistent "experience" to the agents via vector search.
 - **Data Points**:
-    - **Producer**: Stores task categories to ensure diversity and progressively increasing difficulty.
-    - **Consumer**: Stores "Best Practices" and "Fix Recipes". If a piece of code is fixed in the Sandbox, the correction is stored as a memory.
-    - **Retrieval**: Agents query memory during their reasoning phase to contextualize the current task.
+    - **Sandbox**: Stores failure logs and error patterns. If code fails, the error is vectorized and stored.
+    - **Producer/Consumer**: Can query memory to avoid repeating mistakes or to find similar successful patterns (extensibility).
+    - **Implementation**: Uses `ollama` for embeddings (`nomic-embed-text`) and `Qdrant` for storage and retrieval.
 
-### 2. Self-Learning Loop (`agent-lightning`)
-- **Reward Signal**: The `Reviewer` generates a performance score (0-1) based on:
-    - Code correctness (from Sandbox).
-    - Efficiency and readability.
-    - Adherence to requirements.
-- **Optimization**: `agent-lightning` uses these scores to perform **Prompt Optimization**. It refines the system instructions of the Producer and Consumer to maximize reward over time.
+### 2. Self-Healing Loop
+- **Error Correction**: When the `Sandbox` detects a failure, it re-publishes the task to `ai_topic` with the error message prefixed as "FIX THIS CODE:".
+- **Reinforcement**: The `Reviewer` provides a final critique that is archived by the `Persistence` agent, creating a historical dataset of tasks, solutions, and reviews.
 
 ### 3. Structured Telemetry
 - **Topic**: `ai_telemetry`
@@ -41,19 +37,21 @@ The system transitions from a simple pipeline to a **Closed-Loop Learning Ecosys
     ```json
     {
       "agent": "consumer",
-      "timestamp": "ISO-8601",
-      "latency_ms": 1200,
-      "tokens_used": 450,
-      "reward_score": 0.85,
-      "memory_hits": 2
+      "type": "log|metric|event",
+      "message": "...",
+      "value": 0.85,
+      "timestamp": 123456789.0,
+      "extra": {}
     }
     ```
 
 ## 🔄 Interaction Flow
 
-1.  **Producer** brainstorms a task, checking **Memory** to avoid repetition.
-2.  **Consumer** receives the task, pulls related snippets from **Memory**, and generates code.
-3.  **Sandbox** executes the code. If it fails, feedback is sent to **Consumer** AND stored in **Memory**.
-4.  **Reviewer** critiques the final code and assigns a **Reward Score**.
-5.  **Learning Optimizer** aggregates scores and periodically updates the **Agent Skills**.
-6.  **Telemetry** captures the entire lifecycle for real-time visualization on the **Dashboard**.
+1.  **Producer** brainstorms a task and publishes to `ai_topic`.
+2.  **Consumer** translates the task into Python code and publishes to `ai_solutions`.
+3.  **Sandbox** executes the code. 
+    - On **Success**: Publishes results to `ai_verified_solutions`.
+    - On **Failure**: Stores error in **Qdrant** and requests a fix via `ai_topic`.
+4.  **Reviewer** critiques the solution and publishes to `ai_reviews`.
+5.  **Persistence** agent captures reviews and saves the full cycle to CSV.
+6.  **Dashboard** listens to all topics and unified `ai_telemetry` for real-time visualization.
