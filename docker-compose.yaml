@@ -19,77 +19,127 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
 
-  producer-agent:
+  arena-coordinator:
     build: .
-    container_name: producer-agent
-    restart: always  # Crucial: restart if NoBrokersAvailable hits    
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      - KAFKA_BROKER=kafka:9092
-      - OLLAMA_URL=http://host.docker.internal:11434/v1
-      - PYTHONUNBUFFERED=1      
-    volumes:
-      - .:/app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: python producer_agent.py
-
-  consumer-agent:
-    build: .
-    # container_name REMOVED to allow scaling (docker compose up --scale consumer-agent=3)
-    restart: always  # Crucial: restart if NoBrokersAvailable hits    
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      - KAFKA_BROKER=kafka:9092
-      - OLLAMA_URL=http://host.docker.internal:11434/v1
-      - PYTHONUNBUFFERED=1      
-    volumes:
-      - .:/app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: python consumer_agent.py
-
-  reviewer-agent:
-    build: .
-    container_name: reviewer-agent
-    restart: always  # Crucial: restart if NoBrokersAvailable hits    
-    depends_on:
-      kafka:
-        condition: service_healthy
-    environment:
-      - KAFKA_BROKER=kafka:9092
-      - OLLAMA_URL=http://host.docker.internal:11434/v1
-      - PYTHONUNBUFFERED=1        
-    volumes:
-      - .:/app
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: python reviewer_agent.py
-
-  sandbox-agent:
-    build: .
-    container_name: sandbox-agent
+    container_name: arena-coordinator
     restart: always
     depends_on:
       kafka:
         condition: service_healthy
-      qdrant:
-        condition: service_started
     environment:
       - KAFKA_BROKER=kafka:9092
+      - ARENA_COORDINATOR_MODEL=${ARENA_COORDINATOR_MODEL:-gemma3:1b}
       - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    command: python arena_coordinator.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+
+  arena-judge:
+    build: .
+    container_name: arena-judge
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
       - OLLAMA_URL=http://host.docker.internal:11434/v1
-      - QDRANT_HOST=qdrant
+      - ARENA_JUDGE_MODEL=${ARENA_JUDGE_MODEL:-gemma3:1b}
+      - PYTHONUNBUFFERED=1
     volumes:
       - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: python sandbox_agent.py
+    command: python arena_judge.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  solver-alpha:
+    build: .
+    container_name: solver-alpha
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - OLLAMA_URL=http://host.docker.internal:11434/v1
+      - SOLVER_ID=alpha
+      - SOLVER_PERSONA=Stats-Guru & Technical Deep-Diver
+      - ARENA_SOLVER_MODEL=${ARENA_SOLVER_MODEL:-gemma3:1b}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python arena_solver.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+#  solver-beta:
+#    build: .
+#    container_name: solver-beta
+#    restart: always
+#    depends_on:
+#      kafka:
+#        condition: service_healthy
+#    environment:
+#      - KAFKA_BROKER=kafka:9092
+#      - OLLAMA_URL=http://host.docker.internal:11434/v1
+#      - SOLVER_ID=beta
+#      - SOLVER_PERSONA=Risk-Analyst & Security Architect
+#      - PYTHONUNBUFFERED=1
+#    volumes:
+#      - .:/app
+#    extra_hosts:
+#      - "host.docker.internal:host-gateway"
+#    command: python arena_solver.py
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '0.5'
+#          memory: 512M
+
+#  solver-gamma:
+#    build: .
+#    container_name: solver-gamma
+#    restart: always
+#    depends_on:
+#      kafka:
+#        condition: service_healthy
+#    environment:
+#      - KAFKA_BROKER=kafka:9092
+#      - OLLAMA_URL=http://host.docker.internal:11434/v1
+#      - SOLVER_ID=gamma
+#      - SOLVER_PERSONA=Creative-Director & UX Specialist
+#      - PYTHONUNBUFFERED=1
+#    volumes:
+#      - .:/app
+#    extra_hosts:
+#      - "host.docker.internal:host-gateway"
+#    command: python arena_solver.py
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '0.5'
+#          memory: 512M
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -99,25 +149,16 @@ services:
       - "6333:6333"
     volumes:
       - ./qdrant_data:/qdrant/storage
-
-  persistence-agent:
-    build: .
-    container_name: persistence-agent
-    restart: always  # Crucial: restart if NoBrokersAvailable hits    
-    depends_on:
-      kafka:
-        condition: service_healthy
-    volumes:
-      - ./data:/app/data
-    environment:
-      - KAFKA_BROKER=kafka:9092
-      - PYTHONUNBUFFERED=1
-    command: python persistent_agent.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
 
   dashboard:
     build: .
     container_name: dashboard
-    restart: always  # Crucial: restart if NoBrokersAvailable hits    
+    restart: always
     depends_on:
       kafka:
         condition: service_healthy
@@ -131,6 +172,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python dashboard_agent.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest

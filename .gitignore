@@ -40,3 +40,5 @@ mem0_*/
  
 qdrant_data/
 qdrant_data/*
+/archive/
+*.log
